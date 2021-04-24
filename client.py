@@ -26,13 +26,14 @@ def main(host, port):
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as clientsocket:
         clientsocket.connect((host, port))
         while True:
+            response = read_message(clientsocket).decode('utf8') # Первое сообщение шлет сервер, поэтому чтение придется переставить в начало цикла
+            print(response[:-len(EOM)])
             message = input('> ').encode('utf8')
             message += EOM
             # Для отправки не обязательно разбивать сообщение на такие же чанки,
             # передача все равно будет согласованной.
             clientsocket.send(message)
-            response = read_message(clientsocket).decode('utf8')
-            print(response[:-len(EOM)])
+
 
 
 if __name__ == '__main__':

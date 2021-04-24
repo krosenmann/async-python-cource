@@ -24,6 +24,17 @@ def read_message(connection) -> bytes:
         message += data
     return message
 
+def get_message_text(message):
+    return message.decode('utf8')[:-len(EOM)]
+
+
+def ask_name(connection) -> bytes:
+    connection.send('Как тебя зовут'.encode('utf8') + EOM)
+    raw_name = read_message(connection)
+    connection.send('Привет, '.encode('utf8') + raw_name) # Надо послать сообщение, иначе клиент застрянет в ожидании ответа сервера после отправки имени
+    name = get_message_text(raw_name)
+    return name
+
 
 def main(host, port):
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as serversocket:
@@ -36,15 +47,17 @@ def main(host, port):
         while True:
             # accept connections from outside
             connection, address = serversocket.accept()
+            username = ask_name(connection)
             print(f"Соединение установлено с {address}")
             while True:                  # Цикл работы с соединением
                 data = read_message(connection)
                 if not data:    # Выходим из цикла работы с клиентом.
                     print("Соединение разорвано")
                     break
+                data = username.encode('utf8') + b': ' + data # Работаем с байтами
                 # Проблема 1: на сокет
                 # приходят байты, поэтому в выводе мы видим кракозябры.
-                print(data.decode('utf8')[:-len(EOM)]) # Декодируем, выделяем и печатаем сообщение
+                print(get_message_text(data)) # Декодируем, выделяем и печатаем сообщение
                 # Отправляем данные обратно клиенту.
                 sendet = connection.send(data)
                 assert sendet > 0, "Данные не отправлены, возможно соединение разорвано" # Удостоверимся, что данные ушли
