@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-import socket
+import socket                    
 import argparse
 
 def parse_cli_arguments():
@@ -8,6 +8,21 @@ def parse_cli_arguments():
     parser.add_argument('--port', type=int, default=9999)
     args = parser.parse_args()
     return args
+
+
+BLOCK_LEN = 32                 # Для практики установим всего 32 байта
+EOM = b"ENDOFMESSAGE___"        # End of message
+
+
+def read_message(connection) -> bytes:
+    message = b''
+    while len(message) < len(EOM) or message[-len(EOM):] != EOM: # Обрабатываем условие нашего протокола.
+        data = connection.recv(BLOCK_LEN)
+        if not data:
+            break
+        assert isinstance(data[0], int), f"С данными что-то не так. Ожидаем байты, получили {type(data)}"
+        message += data
+    return message
 
 
 def main(host, port):
@@ -23,15 +38,13 @@ def main(host, port):
             connection, address = serversocket.accept()
             print(f"Соединение установлено с {address}")
             while True:                  # Цикл работы с соединением
-                data = connection.recv(4096) # man 2 recv
-                # Когда клиент отключается, ``recv`` возвращает пустое сообщение: ``b''``.
-                if not data:
+                data = read_message(connection)
+                if not data:    # Выходим из цикла работы с клиентом.
+                    print("Соединение разорвано")
                     break
-                # Инвариант клиента. В корректно работающей программе это условие всегда верно.
-                assert isinstance(data[0], int), f"С данными что-то не так. Ожидаем байты, получили {type(data)}"
                 # Проблема 1: на сокет
                 # приходят байты, поэтому в выводе мы видим кракозябры.
-                print(data.decode('utf8'))
+                print(data.decode('utf8')[:-len(EOM)]) # Декодируем, выделяем и печатаем сообщение
                 # Отправляем данные обратно клиенту.
                 sendet = connection.send(data)
                 assert sendet > 0, "Данные не отправлены, возможно соединение разорвано" # Удостоверимся, что данные ушли
