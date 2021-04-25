@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
-import socket                    
 import argparse
+import queue
+import select, socket
+
 
 def parse_cli_arguments():
     parser = argparse.ArgumentParser(description="Простой сервер")
@@ -39,29 +41,50 @@ def ask_name(connection) -> bytes:
 def main(host, port):
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as serversocket:
 
+        serversocket.setblocking(False)
         serversocket.bind((host, port))
         # слушаем порт
         serversocket.listen()
+        inputs = [serversocket]
+        outputs = []
+        message_queues = {}
 
         # Основной цикл программы. Ждем новых соеднинений.
-        while True:
-            # accept connections from outside
-            connection, address = serversocket.accept()
-            username = ask_name(connection)
-            print(f"Соединение установлено с {address}")
-            while True:                  # Цикл работы с соединением
-                data = read_message(connection)
-                if not data:    # Выходим из цикла работы с клиентом.
-                    print("Соединение разорвано")
-                    break
-                data = username.encode('utf8') + b': ' + data # Работаем с байтами
-                # Проблема 1: на сокет
-                # приходят байты, поэтому в выводе мы видим кракозябры.
-                print(get_message_text(data)) # Декодируем, выделяем и печатаем сообщение
-                # Отправляем данные обратно клиенту.
-                sendet = connection.send(data)
-                assert sendet > 0, "Данные не отправлены, возможно соединение разорвано" # Удостоверимся, что данные ушли
+        while inputs:
+            readable, writable, exceptional = select.select(inputs, outputs, inputs)
 
+            for sock in readable: # Перебираем сокеты на прослушивание.
+                if sock is serversocket:
+                    connection, address = serversocket.accept() # Принимаем соединение от клиентов
+                    connection.setblocking(0)
+                    inputs.append(connection) # Регистрируем соединение на чтение
+                    outputs.append(connection) # Регистрируем на отправку
+                    message_queues[connection] = queue.Queue() # И очередь сообщений для соединения. Сюда можно сразу же добавить приветсвенное сообщение
+                    message_queues[connection].put('Как тебя зовут'.encode('utf8') + EOM)
+                    print(f"Соединение установлено с {address}")
+                else:
+                    data = read_message(sock)
+                    if data:
+                        for q in message_queues.values():
+                            q.put(data) # Регистрируем сообщение для отправки по всем соединениям
+                        if sock not in outputs:
+                            outputs.append(sock) # Регистрируем соединение в списке на отправку
+                    else:
+                        if sock in outputs:
+                            outputs.remove(sock) # Соединение разорвано, удаляем соединения из списка на отправку
+                        inputs.remove(sock)      # И из списка на прослушивание тоже удаляем
+                        sock.close()             # Закрываем соединение
+                        del message_queues[sock]  # Помечаем очередь для удаления
+                        print("Соединение разорвано")
+
+            for sock in writable: # Сокеты для отправки
+                try:
+                    message = message_queues[sock].get_nowait() # Неблокирующий get
+                except queue.Empty:
+                    outputs.remove(sock) # Сообщений нет, из очереди на отправку удаляем (по идее, это не обязательно)
+                else:
+                    print(get_message_text(message))
+                    sock.send(message)
 
 if __name__ == '__main__':
     args = parse_cli_arguments()
