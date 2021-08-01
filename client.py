@@ -30,11 +30,25 @@ async def promt(ws):
 
 
 async def main():
-    async with aiohttp.ClientSession().ws_connect('http://0.0.0.0:8080/ws') as ws:
-        await asyncio.gather(
-            run_client(ws),
-            promt(ws)
-        )
+    # Читаем имя пользователя и пароль
+    username = await ainput('Name: ')
+    password = await ainput('Password: ')
+
+    # Проходим аутентификацию. 
+    # Если что-то пойдет не так, вылетит исключение за счет параметра raise_for_status=True
+    async with aiohttp.ClientSession() as client:
+        auth = await client.post('http://0.0.0.0:8080/signin', data={'username': username,
+                                                                     'password': password},
+                                 raise_for_status=True)
+        print(auth)
+    # Пересоздаем сессию с куками
+    async with aiohttp.ClientSession(cookies=auth.cookies) as client:
+        # И дальше работаем с сокетом как раньше
+        async with client.ws_connect('http://0.0.0.0:8080/ws') as ws:
+            await asyncio.gather(
+                run_client(ws),
+                promt(ws)
+            )
 
 
 if __name__ == '__main__':
