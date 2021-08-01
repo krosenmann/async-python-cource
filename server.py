@@ -1,38 +1,27 @@
 #!/usr/bin/env python3
-import asyncio
+import aiohttp
+from aiohttp import web
 
-writers = []
+async def websocket_handler(request):
 
-def forward(writer, addr, message):
-    for w in writers:
-        if w != writer:
-            w.write(f"{addr!r}: {message!r}\n".encode())
+    ws = web.WebSocketResponse()
+    await ws.prepare(request)
 
-async def handle(reader, writer):
-    writers.append(writer)
-    addr = writer.get_extra_info('peername')
-    message = f"{addr!r} подключен !!!!"
-    print(message)
-    forward(writer, addr, message)
-    while True:
-        data = await reader.read(100)
-        message = data.decode().strip()
-        forward(writer, addr, message)
-        await writer.drain()
-        if message == "exit":
-            message = f"{addr!r} отключился."
-            print(message)
-            forward(writer, "сервер", message)
-            break
-    writers.remove(writer)
-    writer.close()
+    async for msg in ws:
+        if msg.type == aiohttp.WSMsgType.TEXT:
+            if msg.data == 'close':
+                await ws.close()
+            else:
+                await ws.send_str(msg.data + '/answer')
+        elif msg.type == aiohttp.WSMsgType.ERROR:
+            print('ws connection closed with exception %s' %
+                  ws.exception())
 
-async def main():
-    server = await asyncio.start_server(
-        handle, 'localhost', 9999)
-    addr = server.sockets[0].getsockname()
-    print(f'Запущено на:  {addr}')
-    async with server:
-        await server.serve_forever()
+    print('websocket connection closed')
 
-asyncio.run(main())
+    return ws
+
+if __name__ == '__main__':
+    app = web.Application()
+    app.add_routes([web.get('/ws', websocket_handler)])
+    web.run_app(app)
