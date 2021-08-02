@@ -21,6 +21,20 @@ async def websocket_handler(request):
 
     return ws
 
+
+async def sign_in(request):
+    users = request.app['USERS']
+    data = await request.post()
+    # Регистрация
+    if data['username'] not in list(users.keys()):
+        request.app['USERS'][data['username']] = data['password']
+    # Проверяем, что пароль правильный
+    if data['password'] != request.app['USERS'][data['username']]:
+        raise web.HTTPUnauthorized('Wrong password!')
+    # <<Сохранение сессии>>       Это решим в следующем упражнении
+    return web.Response(text=f'Hello, {data["username"]}')
+
+
 if __name__ == '__main__':
     app = web.Application()
     app.add_routes([web.get('/ws', websocket_handler)])
