@@ -27,19 +27,26 @@ async def websocket_handler(request):
 
     session = await get_session(request)
     user = session.get('username', None)
-    # Если пользователь не залогинен (или не существует), то не даем ему подключиться.
     if user is None or user not in request.app['USERS']:
         raise web.HTTPUnauthorized()
+
+    # Регистрируем сокет в приложении.
+    request.app['USER CONNECTIONS'].append(ws)
 
     async for msg in ws:
         if msg.type == aiohttp.WSMsgType.TEXT:
             if msg.data == 'close':
                 await ws.close()
             else:
-                await ws.send_str(f'{user}: ' + msg.data + '/answer')
+                # Рассылка сообщения
+                for socket in request.app['USER CONNECTIONS']:
+                    await socket.send_str(f'{user}: ' + msg.data)
         elif msg.type == aiohttp.WSMsgType.ERROR:
             print('ws connection closed with exception %s' %
                   ws.exception())
+
+    # Соединение закрыто, убираем сокет из списка
+    request.app['USER CONNECTIONS'].remove(ws)
 
     print('websocket connection closed')
 
@@ -50,7 +57,7 @@ def create_app():
     SECRET_KEY = base64.urlsafe_b64decode(fernet_key)
     app = web.Application()
     app['USERS'] = {}           # Инициализируем пустым словарем
-    app['USER CONNECTIONS'] = []
+    app['USER CONNECTIONS'] = [] # Просто добавили еще один контейнер, все остальное как раньше
     setup(app, EncryptedCookieStorage(SECRET_KEY))
     app.add_routes([web.get('/ws', websocket_handler),
                     web.post('/signin', sign_in)])
