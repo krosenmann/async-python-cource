@@ -29,9 +29,9 @@ async def websocket_handler(request):
     user = session.get('username', None)
     if user is None or user not in request.app['USERS']:
         raise web.HTTPUnauthorized()
-
-    # Регистрируем сокет в приложении.
-    request.app['USER CONNECTIONS'].append(ws)
+    room_id = request.match_info['room_id']
+    # Регистрируем сокет в комнате
+    request.app['ROOMS'][room_id].append(ws)
 
     async for msg in ws:
         if msg.type == aiohttp.WSMsgType.TEXT:
@@ -39,7 +39,7 @@ async def websocket_handler(request):
                 await ws.close()
             else:
                 # Рассылка сообщения
-                for socket in request.app['USER CONNECTIONS']:
+                for socket in request.app['ROOMS'][room_id]:
                     await socket.send_str(f'{user}: ' + msg.data)
         elif msg.type == aiohttp.WSMsgType.ERROR:
             print('ws connection closed with exception %s' %
@@ -57,9 +57,16 @@ def create_app():
     SECRET_KEY = base64.urlsafe_b64decode(fernet_key)
     app = web.Application()
     app['USERS'] = {}           # Инициализируем пустым словарем
-    app['USER CONNECTIONS'] = [] # Просто добавили еще один контейнер, все остальное как раньше
+    app['ROOMS'] = {
+        '1': [],
+        '2': [],
+        '3': [],
+    }
+    # Комнаты проинициализировать здесь (идентификатор, а под ним - список юзеров)
+    # Добавить комнаты ключом ROOMS
     setup(app, EncryptedCookieStorage(SECRET_KEY))
-    app.add_routes([web.get('/ws', websocket_handler),
+    # Параметризацию для сокетов сюда - будут комнаты
+    app.add_routes([web.get('/ws/{room_id}', websocket_handler),
                     web.post('/signin', sign_in)])
     return app
 

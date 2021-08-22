@@ -34,6 +34,8 @@ async def main():
     username = await ainput('Name: ')
     password = await ainput('Password: ')
 
+    room_id = await ainput('Room id: ')
+
     # Проходим аутентификацию. 
     # Если что-то пойдет не так, вылетит исключение за счет параметра raise_for_status=True
     async with aiohttp.ClientSession() as client:
@@ -44,7 +46,7 @@ async def main():
     # Пересоздаем сессию с куками
     async with aiohttp.ClientSession(cookies=auth.cookies) as client:
         # И дальше работаем с сокетом как раньше
-        async with client.ws_connect('http://0.0.0.0:8080/ws') as ws:
+        async with client.ws_connect(f'http://0.0.0.0:8080/ws/{room_id}') as ws:
             await asyncio.gather(
                 run_client(ws),
                 promt(ws)
