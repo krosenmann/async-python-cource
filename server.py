@@ -52,6 +52,11 @@ async def websocket_handler(request):
 
     return ws
 
+
+async def room_list(request):
+    return web.json_response(data=list(request.app['ROOMS'].keys()))
+
+
 def create_app():
     fernet_key = fernet.Fernet.generate_key()
     SECRET_KEY = base64.urlsafe_b64decode(fernet_key)
@@ -67,7 +72,8 @@ def create_app():
     setup(app, EncryptedCookieStorage(SECRET_KEY))
     # Параметризацию для сокетов сюда - будут комнаты
     app.add_routes([web.get('/ws/{room_id}', websocket_handler),
-                    web.post('/signin', sign_in)])
+                    web.post('/signin', sign_in),
+                    web.get('/rooms', room_list)])
     return app
 
 if __name__ == '__main__':
