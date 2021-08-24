@@ -5,6 +5,7 @@ from aiohttp_session import setup, get_session
 from aiohttp_session.cookie_storage import EncryptedCookieStorage
 import base64
 from cryptography import fernet
+from passlib.hash import pbkdf2_sha256
 
 
 async def sign_in(request):
@@ -12,10 +13,12 @@ async def sign_in(request):
     data = await request.post()
     # Регистрация
     if data['username'] not in list(users.keys()):
-        request.app['USERS'][data['username']] = data['password']
+        request.app['USERS'][data['username']] = pbkdf2_sha256.hash(data['password'])
     # Проверяем, что пароль правильный
-    if data['password'] != request.app['USERS'][data['username']]:
-        raise web.HTTPUnauthorized('Wrong password!')
+    pass_hash = request.app['USERS'][data['username']]
+    if not pbkdf2_sha256.verify(data['password'], pass_hash):
+        raise web.HTTPUnathorized('Wrong password!')
+
     session = await get_session(request)
     session['username'] = data['username']       # Это решим в следующем упражнении
     return web.Response(text=f'Hello, {data["username"]}')
@@ -67,7 +70,6 @@ def create_app():
         '2': [],
         '3': [],
     }
-    # Комнаты проинициализировать здесь (идентификатор, а под ним - список юзеров)
     # Добавить комнаты ключом ROOMS
     setup(app, EncryptedCookieStorage(SECRET_KEY))
     # Параметризацию для сокетов сюда - будут комнаты
