@@ -49,7 +49,7 @@ async def websocket_handler(request):
                   ws.exception())
 
     # Соединение закрыто, убираем сокет из списка
-    request.app['USER CONNECTIONS'].remove(ws)
+    request.app['ROOMS'][room_id].remove(ws)
 
     print('websocket connection closed')
 
