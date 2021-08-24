@@ -17,7 +17,7 @@ async def sign_in(request):
     # Проверяем, что пароль правильный
     pass_hash = request.app['USERS'][data['username']]
     if not pbkdf2_sha256.verify(data['password'], pass_hash):
-        raise web.HTTPUnathorized('Wrong password!')
+        raise web.HTTPUnauthorized(text='Wrong password!')
 
     session = await get_session(request)
     session['username'] = data['username']       # Это решим в следующем упражнении
