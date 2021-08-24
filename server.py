@@ -7,6 +7,60 @@ import base64
 from cryptography import fernet
 from passlib.hash import pbkdf2_sha256
 
+# --- База данных
+import asyncio
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+from sqlalchemy.orm import declarative_base, sessionmaker, relationship
+from sqlalchemy.schema import Table, ForeignKey
+from sqlalchemy import Column, Integer, String
+
+
+DATABASE_URL = "sqlite+aiosqlite:///./chat.db"
+
+Base = declarative_base()
+
+# upr == Users per rooms
+# Вспомогательная таблица для реализации пересечения множеств пользователей и комнат
+# Необходимая штука для связи многие-ко-многим
+_upr = Table('user_per_room', Base.metadata,
+             Column('user_id', ForeignKey('users.id')),
+             Column('room_id', ForeignKey('rooms.id')))
+
+
+class User(Base):
+    """Таблица с пользователями (и их паролями)
+    """
+    __tablename__ = 'users'
+
+    id = Column(Integer, primary_key=True)
+    username = Column(String, nullable=False, unique=True)
+    pass_hash = Column(String, nullable=False)
+
+
+class Room(Base):
+    """Комнаты со списками пользователей
+    """
+    __tablename__ = 'rooms'
+    id = Column(Integer, primary_key=True)
+    name = Column(String, nullable=False, unique=True)
+    users = relationship("User", secondary=_upr) # Многие-ко-многим
+
+
+# Утилиты для работы с базой
+def create_table(app):
+    """Создает таблицы в базе приложения, см. параметр ``DATABASE_URL``
+    """
+    # Нам нужен синхронный интерфейс к этой функции, поэтому просто оборачиваем.
+    # И запускаем через вызов ``asyncio.run``
+    async def _create_table(_app):
+        print("Создаем таблицы")
+        async with _app['DB ENGINE'].begin() as connection:
+            await connection.run_sync(Base.metadata.create_all)
+        print("Создано!")
+    asyncio.run(_create_table(app))
+
+
+# Сервер
 
 async def sign_in(request):
     users = request.app['USERS']
@@ -64,6 +118,13 @@ def create_app():
     fernet_key = fernet.Fernet.generate_key()
     SECRET_KEY = base64.urlsafe_b64decode(fernet_key)
     app = web.Application()
+
+    # Инициализация БД
+    engine = create_async_engine(DATABASE_URL, future=True, echo=True)
+    app['DB ENGINE'] = engine
+    app['DB SESSION'] = sessionmaker(engine, expire_on_commit=False, 
+                                     class_=AsyncSession)
+
     app['USERS'] = {}           # Инициализируем пустым словарем
     app['ROOMS'] = {
         '1': [],
@@ -72,6 +133,8 @@ def create_app():
     }
     # Добавить комнаты ключом ROOMS
     setup(app, EncryptedCookieStorage(SECRET_KEY))
+
+
     # Параметризацию для сокетов сюда - будут комнаты
     app.add_routes([web.get('/ws/{room_id}', websocket_handler),
                     web.post('/signin', sign_in),
