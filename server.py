@@ -12,6 +12,7 @@ import asyncio
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import declarative_base, sessionmaker, relationship
 from sqlalchemy.schema import Table, ForeignKey
+from sqlalchemy.future import select
 from sqlalchemy import Column, Integer, String
 
 
@@ -64,18 +65,28 @@ def create_table(app):
 
 async def sign_in(request):
     users = request.app['USERS']
+
     data = await request.post()
+
+    async with request.app['DB SESSION']() as session:
+        q = select(User).where(User.username == data['username'])
+        user = (await session.execute(q)).one_or_none()
     # Регистрация
-    if data['username'] not in list(users.keys()):
-        request.app['USERS'][data['username']] = pbkdf2_sha256.hash(data['password'])
+    if user is None:
+        user = User(username=data['username'], pass_hash=pbkdf2_sha256.hash(data['password']))
+        async with request.app['DB SESSION']() as session:
+            session.add(user)
+    else:
+        user = user[0]
+
     # Проверяем, что пароль правильный
-    pass_hash = request.app['USERS'][data['username']]
+    pass_hash = user.pass_hash
     if not pbkdf2_sha256.verify(data['password'], pass_hash):
         raise web.HTTPUnauthorized(text='Wrong password!')
 
     session = await get_session(request)
-    session['username'] = data['username']       # Это решим в следующем упражнении
-    return web.Response(text=f'Hello, {data["username"]}')
+    session['username'] = user.username
+    return web.Response(text=f'Hello, {user.username}')
 
 
 async def websocket_handler(request):
@@ -84,7 +95,7 @@ async def websocket_handler(request):
 
     session = await get_session(request)
     user = session.get('username', None)
-    if user is None or user not in request.app['USERS']:
+    if user is None:
         raise web.HTTPUnauthorized()
     room_id = request.match_info['room_id']
     # Регистрируем сокет в комнате
