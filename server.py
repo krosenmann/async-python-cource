@@ -96,7 +96,10 @@ async def websocket_handler(request):
     session = await get_session(request)
     user = session.get('username', None)
     if user is None:
-        return web.HTTPUnauthorized()
+        await ws.send_str('Unauthorized')
+        await ws.close()
+        return ws
+
     room_id = int(request.match_info['room_id'])
     # Регистрируем сокет в комнате
     if room_id not in list(request.app['ROOMS'].keys()):
