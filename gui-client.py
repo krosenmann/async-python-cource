@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 
+import asyncio
+import concurrent.futures
 import socket
 import threading
 from tkinter import *
@@ -12,6 +14,9 @@ from client import recieve, send, ws_connect, sign_in, room_list
 class GUI:
 
     def __init__(self):
+
+        # Достаем цикл событий для asyncio, все сопрограммы будем выполнять в нем
+        self.aloop = asyncio.get_event_loop()
         
         # Окно чата, пока скрыто
         self.root = Tk()
@@ -81,13 +86,23 @@ class GUI:
 
     # Команда, которая выполняется по нажатию кнопки Login
     def go_ahead(self, name, password):
+        cookie = self.authorize(name, password)
         self.login.destroy()    # Закрываем окно с логином
         self.layout(name)       # Запускаем отрисовку и построение окна с чатом.
         # Пока дополнительный манипуляций не делаем. 
-        
+
+    def authorize(self, name, password):
+        def _auth(loop):
+            return loop.run_until_complete(sign_in(name, password))
+
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            fut = executor.submit(_auth, self.aloop)
+            self.cookie = fut.result()
+        return self.cookie
+
     # основное окно чата
     def layout(self,name):
-        self.name = name  
+        self.name = name
         # Показать окно чата
         self.root.deiconify()
         self.root.title("FANCY CHAD")
