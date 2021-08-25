@@ -17,6 +17,7 @@ class GUI:
 
         # Достаем цикл событий для asyncio, все сопрограммы будем выполнять в нем
         self.aloop = asyncio.get_event_loop()
+        self.room = 1
         
         # Окно чата, пока скрыто
         self.root = Tk()
@@ -89,7 +90,7 @@ class GUI:
         cookie = self.authorize(name, password)
         self.login.destroy()    # Закрываем окно с логином
         self.layout(name)       # Запускаем отрисовку и построение окна с чатом.
-        # Пока дополнительный манипуляций не делаем. 
+        self.ws_listen()
 
     def authorize(self, name, password):
         def _auth(loop):
@@ -106,6 +107,29 @@ class GUI:
                                 # повторить ввод логина и пароля.
                                 # + Это traceback будет полезен при отладке.
         return self.cookie
+
+    def pass_msg_to_vidget(self, msg):
+        print('banana')
+        self.text_cons.config(state=NORMAL) # Включаем редактирование у виджета сообщений
+        self.text_cons.insert(END, msg.data+"\n\n") # Записываем сообщение
+        self.text_cons.config(state=DISABLED)      # Выключаем редактирование
+        self.text_cons.see(END)
+
+    async def a_recieve(self, cookie, room, callback):
+        async with ws_connect(cookie, room) as ws:
+            self.ws = ws
+            print("ST")
+            await recieve(ws, callback)
+            print("Cnn dead")
+
+    def ws_listen(self):
+        def _recieve(loop):
+            loop.create_task(self.a_recieve(self.cookie, self.room,
+                                            callback=self.pass_msg_to_vidget))
+            loop.run_forever()
+
+        listen = threading.Thread(target=_recieve, args=(self.aloop,))
+        listen.start()
 
     # основное окно чата
     def layout(self,name):
