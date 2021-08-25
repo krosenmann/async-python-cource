@@ -23,9 +23,12 @@ Base = declarative_base()
 # upr == Users per rooms
 # Вспомогательная таблица для реализации пересечения множеств пользователей и комнат
 # Необходимая штука для связи многие-ко-многим
-_upr = Table('user_per_room', Base.metadata,
-             Column('user_id', ForeignKey('users.id')),
-             Column('room_id', ForeignKey('rooms.id')))
+class _upr(Base):
+    __tablename__ = 'user_per_room'
+    id = Column(Integer, primary_key=True)
+    user_id = Column(ForeignKey('users.id'))
+    room_id = Column(ForeignKey('rooms.id'))
+    right = Column(String, default="write")
 
 
 class User(Base):
@@ -44,7 +47,7 @@ class Room(Base):
     __tablename__ = 'rooms'
     id = Column(Integer, primary_key=True)
     name = Column(String, nullable=False, unique=True)
-    users = relationship("User", secondary=_upr) # Многие-ко-многим
+    users = relationship("User", secondary='user_per_room') # Многие-ко-многим
 
 
 # Утилиты для работы с базой
@@ -60,7 +63,6 @@ def create_table(app):
         print("Создано!")
     asyncio.run(_create_table(app))
 
-
 # Сервер
 
 async def sign_in(request):
@@ -72,10 +74,12 @@ async def sign_in(request):
         q = select(User).where(User.username == data['username'])
         user = (await session.execute(q)).one_or_none()
     # Регистрация
+    print("User: ", user)
     if user is None:
         user = User(username=data['username'], pass_hash=pbkdf2_sha256.hash(data['password']))
         async with request.app['DB SESSION']() as session:
             session.add(user)
+            await session.commit()
     else:
         user = user[0]
 
@@ -86,6 +90,7 @@ async def sign_in(request):
 
     session = await get_session(request)
     session['username'] = user.username
+    session['user_id'] = user.id
     return web.Response(text=f'Hello, {user.username}')
 
 
@@ -95,12 +100,27 @@ async def websocket_handler(request):
 
     session = await get_session(request)
     user = session.get('username', None)
-    if user is None:
+    user_id = session.get('user_id', None)
+
+    if user is None or user_id is None:
         await ws.send_str('Unauthorized')
         await ws.close()
         return ws
 
     room_id = int(request.match_info['room_id'])
+    # Проверяем права пользователя
+    async with request.app['DB SESSION']() as db_session:    
+        q = select(_upr).where(_upr.user_id == user_id,
+                               _upr.room_id == room_id)
+        right_row = (await db_session.execute(q)).one_or_none()
+        if right_row is not None:
+            right = right_row[0].right
+        else:
+            right = _upr(user_id=user_id,
+                         room_id=room_id)
+            db_session.add(right)
+            await db_session.commit()
+
     # Регистрируем сокет в комнате
     if room_id not in list(request.app['ROOMS'].keys()):
         async with request.app['DB SESSION']() as db_session:
@@ -116,6 +136,9 @@ async def websocket_handler(request):
 
     async for msg in ws:
         if msg.type == aiohttp.WSMsgType.TEXT:
+            if right == 'read':
+                await ws.send_str('You can\'t write here')
+                continue
             if msg.data == 'close':
                 await ws.close()
             else:
