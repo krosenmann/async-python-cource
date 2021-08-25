@@ -96,9 +96,19 @@ async def websocket_handler(request):
     session = await get_session(request)
     user = session.get('username', None)
     if user is None:
-        raise web.HTTPUnauthorized()
-    room_id = request.match_info['room_id']
+        return web.HTTPUnauthorized()
+    room_id = int(request.match_info['room_id'])
     # Регистрируем сокет в комнате
+    if room_id not in list(request.app['ROOMS'].keys()):
+        async with request.app['DB SESSION']() as db_session:
+            room = (await db_session.execute(select(Room).where(Room.id == room_id))).one_or_none()
+        if room is None:
+            print(f'Room with id {room_id} does not exists')
+            await ws.send_str(f'Room with id {room_id} does not exists')
+            await ws.close()
+            return ws
+        # Проинициализируем хранилище открытых сокетов
+        request.app['ROOMS'][room_id] = []
     request.app['ROOMS'][room_id].append(ws)
 
     async for msg in ws:
