@@ -132,7 +132,10 @@ async def websocket_handler(request):
 
 
 async def room_list(request):
-    return web.json_response(data=list(request.app['ROOMS'].keys()))
+    async with request.app['DB SESSION']() as session:
+        rooms = (await session.execute(select(Room)))
+    data = list({room.id: room.name} for room in rooms.scalars())
+    return web.json_response(data=data)
 
 
 def create_app():
