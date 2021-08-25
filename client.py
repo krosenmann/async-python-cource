@@ -22,11 +22,21 @@ async def run_client(ws):
                 break
             else:
                 await aprint('Message received from server:', msg)
-
+        elif msg.type == aiohttp.WSMsgType.CLOSED:
+            print("CLOSED")
+            break
+        elif msg.type == aiohttp.WSMsgType.ERROR:
+            print("ERROR")
+            break
+            
 async def promt(ws):
     while True:
         msg = await ainput('Your text here: ')
-        await ws.send_str(msg)
+        if not ws.closed:
+            await ws.send_str(msg)
+        else:
+            print('Disconnected')
+            break
 
 
 async def main():
