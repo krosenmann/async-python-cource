@@ -6,7 +6,7 @@ import socket
 import threading
 from tkinter import *
 from tkinter import font
-from tkinter import ttk
+from tkinter import ttk, messagebox
 
 from client import recieve, send, ws_connect, sign_in, room_list
 
@@ -97,7 +97,14 @@ class GUI:
 
         with concurrent.futures.ThreadPoolExecutor() as executor:
             fut = executor.submit(_auth, self.aloop)
-            self.cookie = fut.result()
+            try:
+                self.cookie = fut.result()
+            except Exception as exc:
+                messagebox.showerror("Ошибка", exc.message)
+                raise exc       # Это возбуждение все равно нужно, т.к. мы
+                                # хотим, чтобы пользователь мог
+                                # повторить ввод логина и пароля.
+                                # + Это traceback будет полезен при отладке.
         return self.cookie
 
     # основное окно чата
