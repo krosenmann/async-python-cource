@@ -39,6 +39,33 @@ async def promt(ws):
             break
 
 
+async def sign_in(username, password):
+    """ Аутентификация клиента
+
+    :param username: Имя пользователя
+    :param password: Пароль
+
+    :returns: Куки для аутентификации через веб-сокет
+
+    """
+    async with aiohttp.ClientSession() as client:
+        auth = await client.post('http://0.0.0.0:8080/signin', data={'username': username,
+                                                                     'password': password},
+                                 raise_for_status=True)
+    return auth.cookies
+
+
+async def room_list() -> dict:
+    """
+    Функция для получения списка комнат
+    :rtype: dict
+
+    """
+    async with aiohttp.ClientSession() as client:
+        rooms = await client.get('http://0.0.0.0:8080/rooms', raise_for_status=True)
+    return json.loads(rooms)
+    
+
 async def main():
     # Читаем имя пользователя и пароль
     username = await ainput('Name: ')
@@ -46,15 +73,9 @@ async def main():
 
     room_id = await ainput('Room id: ')
 
-    # Проходим аутентификацию. 
-    # Если что-то пойдет не так, вылетит исключение за счет параметра raise_for_status=True
-    async with aiohttp.ClientSession() as client:
-        auth = await client.post('http://0.0.0.0:8080/signin', data={'username': username,
-                                                                     'password': password},
-                                 raise_for_status=True)
-        print(auth)
+    cookies = await sign_in(username, password)
     # Пересоздаем сессию с куками
-    async with aiohttp.ClientSession(cookies=auth.cookies) as client:
+    async with aiohttp.ClientSession(cookies=cookies) as client:
         # И дальше работаем с сокетом как раньше
         async with client.ws_connect(f'http://0.0.0.0:8080/ws/{room_id}') as ws:
             await asyncio.gather(
